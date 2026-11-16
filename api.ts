@@ -168,7 +168,9 @@ export function handleRest(store: Store, ctx: RequestContext): Response {
       const slice = all.slice(start, start + perPage);
       const headers: Record<string, string> = {};
       if (start + perPage < all.length) {
-        const next = `/api/v3/user/repos?per_page=${perPage}&page=${page + 1}`;
+        // The Link header must carry an absolute same-origin URL.
+        const host = ctx.headers.get('host') ?? 'localhost';
+        const next = `http://${host}/api/v3/user/repos?per_page=${perPage}&page=${page + 1}`;
         headers.link = `<${next}>; rel="next"`;
       }
       return json(200, slice.map((r) => repoObject(store, r)), headers);
@@ -275,10 +277,18 @@ export function handleRest(store: Store, ctx: RequestContext): Response {
           const currentSha = fileSha(store, repo, branch, filePath);
           if (payload.sha !== undefined && payload.sha !== currentSha) return err(409, 'sha does not match');
           const sha = store.commitFile(repo, branch, filePath, content, message);
-          return json(200, { content: { sha: fileSha(store, repo, branch, filePath), path: filePath }, commit: { sha } });
+          const blobSha = fileSha(store, repo, branch, filePath);
+          return json(200, {
+            content: { sha: blobSha, path: filePath, name: filePath.split('/').pop(), type: 'file', encoding: 'base64', size: content.length },
+            commit: { sha },
+          });
         }
         const sha = store.commitFile(repo, branch, filePath, content, message);
-        return json(201, { content: { sha: fileSha(store, repo, branch, filePath), path: filePath }, commit: { sha } });
+        const blobSha = fileSha(store, repo, branch, filePath);
+        return json(201, {
+          content: { sha: blobSha, path: filePath, name: filePath.split('/').pop(), type: 'file', encoding: 'base64', size: content.length },
+          commit: { sha },
+        });
       }
       if (ctx.method === 'DELETE') {
         if (!fileExists(store, repo, repo.defaultBranch, filePath)) return err(404, 'Not Found');

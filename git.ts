@@ -147,11 +147,33 @@ function planFetch(
 ): FetchPlan {
   const haveSet = new Set(haves);
   const shallowSet = new Set(shallowIn);
+  // A want (or have) may be an annotated tag: the tag object itself must be
+  // sent, and the walk follows the tag to its target commit.
+  const tagWants = new Set<string>();
+  const walkRoots: string[] = [];
+  for (const w of wants) {
+    const obj = repo.objects.get(w);
+    if (obj?.type === 'tag') {
+      tagWants.add(w);
+      walkRoots.push(parseTag(obj.data).object);
+    } else {
+      walkRoots.push(w);
+    }
+  }
   // Objects the client already holds: everything reachable from a have,
   // except that a shallow boundary's parents are NOT held.
   const held = new Set<string>();
   {
-    const stack = [...haves];
+    const stack: string[] = [];
+    for (const h of haves) {
+      const obj = repo.objects.get(h);
+      if (obj?.type === 'tag') {
+        held.add(h);
+        stack.push(parseTag(obj.data).object);
+      } else {
+        stack.push(h);
+      }
+    }
     const seenCommits = new Set<string>();
     while (stack.length > 0) {
       const oid = stack.pop() as string;
@@ -179,7 +201,7 @@ function planFetch(
   // Commits the fetch must cover: from the wants, within `depth` when given.
   const dist = new Map<string, number>();
   const queue: string[] = [];
-  for (const w of wants) {
+  for (const w of walkRoots) {
     if (!dist.has(w)) {
       dist.set(w, 0);
       queue.push(w);
@@ -210,6 +232,7 @@ function planFetch(
     sendSet.add(oid);
     objects.push(obj);
   };
+  for (const tagOid of tagWants) addObject(tagOid);
   for (const oid of covered) {
     if (held.has(oid)) continue;
     const obj = repo.objects.get(oid);
