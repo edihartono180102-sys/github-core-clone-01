@@ -135,6 +135,13 @@ function splitFullName(fullName: string): [string, string] | null {
   return [fullName.slice(0, idx), fullName.slice(idx + 1)];
 }
 
+/** A global id key of the form `owner/name#number` (issues, pull requests). */
+function parseRepoNumberKey(key: string): { owner: string; name: string; number: number } | null {
+  const m = /^([^/]+)\/(.+)#(\d+)$/.exec(key);
+  if (!m) return null;
+  return { owner: m[1] as string, name: m[2] as string, number: Number.parseInt(m[3] as string, 10) };
+}
+
 // ------------------------------------------------------------ REST v3
 
 export function handleRest(store: Store, ctx: RequestContext): Response {
@@ -228,7 +235,8 @@ export function handleRest(store: Store, ctx: RequestContext): Response {
       if (!tip) return err(404, 'Not Found');
       const list = store.commitList(repo, tip).map((c) => ({
         sha: c.sha,
-        commit: { message: c.message, author: { name: viewer } },
+        // GitHub's API returns the message without its trailing newline.
+        commit: { message: c.message.replace(/\n$/, ''), author: { name: viewer } },
       }));
       return json(200, list);
     }
@@ -826,12 +834,11 @@ class GraphQLExecutor {
         const input = (args.input ?? {}) as Record<string, unknown>;
         const parsed = parseGlobalId(asString(input.issueId));
         if (!parsed) return { issue: null };
-        const parts = splitFullName(parsed.key);
-        if (!parts) return { issue: null };
-        const repo = this.store.getRepo(parts[0], parts[1]);
+        const key = parseRepoNumberKey(parsed.key);
+        if (!key) return { issue: null };
+        const repo = this.store.getRepo(key.owner, key.name);
         if (!repo) return { issue: null };
-        const num = Number.parseInt(parsed.key.split('#')[1] ?? '', 10);
-        const issue = repo.issues.get(num);
+        const issue = repo.issues.get(key.number);
         if (!issue) return { issue: null };
         issue.state = 'closed';
         issue.updatedAt = trialNowIso();
@@ -859,12 +866,11 @@ class GraphQLExecutor {
         const input = (args.input ?? {}) as Record<string, unknown>;
         const parsed = parseGlobalId(asString(input.pullRequestId));
         if (!parsed) return { pullRequest: null };
-        const parts = splitFullName(parsed.key);
-        if (!parts) return { pullRequest: null };
-        const repo = this.store.getRepo(parts[0], parts[1]);
+        const key = parseRepoNumberKey(parsed.key);
+        if (!key) return { pullRequest: null };
+        const repo = this.store.getRepo(key.owner, key.name);
         if (!repo) return { pullRequest: null };
-        const num = Number.parseInt(parsed.key.split('#')[1] ?? '', 10);
-        const pull = repo.pulls.get(num);
+        const pull = repo.pulls.get(key.number);
         if (!pull) return { pullRequest: null };
         const method = asString(input.mergeMethod) === 'MERGE' ? 'MERGE' : 'SQUASH';
         const sha = this.store.mergePull(repo, pull, method);
@@ -882,12 +888,11 @@ class GraphQLExecutor {
         const input = (args.input ?? {}) as Record<string, unknown>;
         const parsed = parseGlobalId(asString(input.subjectId));
         if (!parsed) return { commentEdge: null };
-        const parts = splitFullName(parsed.key);
-        if (!parts) return { commentEdge: null };
-        const repo = this.store.getRepo(parts[0], parts[1]);
+        const key = parseRepoNumberKey(parsed.key);
+        if (!key) return { commentEdge: null };
+        const repo = this.store.getRepo(key.owner, key.name);
         if (!repo) return { commentEdge: null };
-        const num = Number.parseInt(parsed.key.split('#')[1] ?? '', 10);
-        const issue = repo.issues.get(num);
+        const issue = repo.issues.get(key.number);
         if (!issue) return { commentEdge: null };
         const id = this.store.nextComment();
         const comment = { id, body: asString(input.body), createdAt: trialNowIso() };
