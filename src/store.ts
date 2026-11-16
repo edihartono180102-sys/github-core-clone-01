@@ -148,6 +148,11 @@ export class Forge {
     return this.baseUrl;
   }
 
+  /** The REST API root (the server root plus /api/v3). */
+  apiRoot(): string {
+    return `${this.baseUrl}/api/v3`;
+  }
+
   setApiBase(url: string): void {
     this.baseUrl = url;
   }

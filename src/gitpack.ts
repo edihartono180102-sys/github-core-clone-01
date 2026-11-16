@@ -295,35 +295,36 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
   return result;
 }
 
-/** Inflate exactly one zlib stream at `offset`; answer the bytes and how many input bytes it used. */
+/** Adler-32 of a buffer (the checksum a zlib stream stores as its last 4 bytes). */
+function adler32(data: Buffer): number {
+  let a = 1;
+  let b = 0;
+  for (let index = 0; index < data.length; index += 1) {
+    a = (a + (data[index] as number)) % 65521;
+    b = (b + a) % 65521;
+  }
+  return ((b << 16) | a) >>> 0;
+}
+
+/**
+ * Inflate exactly one zlib stream at `offset`; answer the bytes and how many input bytes it used.
+ * inflateSync tolerates trailing bytes (it stops at the first stream's end), so one call yields the
+ * data; the stream's end is then found by scanning for its Adler-32 trailer (verified by a second
+ * inflate of the candidate slice, so a coincidental match inside the deflate data cannot fool it).
+ */
 function inflateOne(pack: Buffer, offset: number): { data: Buffer; consumed: number } {
-  // inflateSync throws on truncation, so grow the window exponentially from a
-  // small probe, then bisect for the smallest slice that inflates cleanly.
-  let probe = Math.min(pack.length, offset + 16);
-  let found = -1;
-  while (probe <= pack.length) {
+  const data = inflateSync(pack.subarray(offset));
+  const checksum = adler32(data);
+  for (let end = offset + 3; end + 4 <= pack.length; end += 1) {
+    if (pack.readUInt32BE(end) !== checksum) continue;
     try {
-      inflateSync(pack.subarray(offset, probe));
-      found = probe;
-      break;
+      const check = inflateSync(pack.subarray(offset, end + 4));
+      if (check.equals(data)) return { data, consumed: end + 4 - offset };
     } catch {
-      if (probe === pack.length) break;
-      probe = Math.min(pack.length, probe * 2);
+      // A coincidental checksum match inside the deflate data: keep scanning.
     }
   }
-  if (found < 0) throw new Error('truncated zlib stream in pack');
-  let lo = offset + 1;
-  let hi = found;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    try {
-      inflateSync(pack.subarray(offset, mid));
-      hi = mid;
-    } catch {
-      lo = mid + 1;
-    }
-  }
-  return { data: inflateSync(pack.subarray(offset, hi)), consumed: hi - offset };
+  throw new Error('truncated zlib stream in pack');
 }
 
 /**

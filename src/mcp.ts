@@ -150,7 +150,7 @@ function repoShape(forge: Forge, repo: Repo): Record<string, unknown> {
     default_branch: repo.defaultBranch,
     created_at: forge.isoAt(repo.createdSeq),
     html_url: `${forge.apiBase()}/${repo.owner}/${repo.name}`,
-    url: `${forge.apiBase()}/repos/${repo.owner}/${repo.name}`,
+    url: `${forge.apiRoot()}/repos/${repo.owner}/${repo.name}`,
   };
 }
 
@@ -194,7 +194,7 @@ function callTool(forge: Forge, name: string, args: Record<string, unknown>): Re
         body: issue.body,
         state: issue.state,
         html_url: `${forge.apiBase()}/${repo.owner}/${repo.name}/issues/${issue.number}`,
-        url: `${forge.apiBase()}/repos/${repo.owner}/${repo.name}/issues/${issue.number}`,
+        url: `${forge.apiRoot()}/repos/${repo.owner}/${repo.name}/issues/${issue.number}`,
       });
     }
     case 'list_issues': {

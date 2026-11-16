@@ -41,7 +41,7 @@ function userShape(forge: Forge): Record<string, unknown> {
 }
 
 function repoUrl(forge: Forge, repo: Repo): string {
-  return `${forge.apiBase()}/repos/${repo.owner}/${repo.name}`;
+  return `${forge.apiRoot()}/repos/${repo.owner}/${repo.name}`;
 }
 
 function repoShape(forge: Forge, repo: Repo): Record<string, unknown> {
@@ -202,7 +202,7 @@ function commitShape(forge: Forge, repo: Repo, sha: string, object: GitObject): 
     sha,
     node_id: globalId('Commit', sha),
     commit: {
-      message: parsed.message,
+      message: parsed.message.replace(/\n+$/, ''),
       author,
       committer,
       tree: { sha: parsed.tree, url: `${repoUrl(forge, repo)}/git/trees/${parsed.tree}` },
@@ -309,16 +309,16 @@ export function handleRest(request: RestRequest): RestResult {
   if (segments.length === 0) {
     if (method !== 'GET') return notFound();
     return json(200, {
-      current_user_url: `${baseUrl}/user`,
-      authorizations_url: `${baseUrl}/authorizations`,
-      emojis_url: `${baseUrl}/emojis`,
-      events_url: `${baseUrl}/events`,
-      feeds_url: `${baseUrl}/feeds`,
-      gists_url: `${baseUrl}/gists{/gist_id}`,
-      meta_url: `${baseUrl}/meta`,
-      repository_url: `${baseUrl}/repos/{owner}/{repo}`,
-      user_url: `${baseUrl}/user`,
-      user_repositories_url: `${baseUrl}/user/repos`,
+      current_user_url: `${baseUrl}/api/v3/user`,
+      authorizations_url: `${baseUrl}/api/v3/authorizations`,
+      emojis_url: `${baseUrl}/api/v3/emojis`,
+      events_url: `${baseUrl}/api/v3/events`,
+      feeds_url: `${baseUrl}/api/v3/feeds`,
+      gists_url: `${baseUrl}/api/v3/gists{/gist_id}`,
+      meta_url: `${baseUrl}/api/v3/meta`,
+      repository_url: `${baseUrl}/api/v3/repos/{owner}/{repo}`,
+      user_url: `${baseUrl}/api/v3/user`,
+      user_repositories_url: `${baseUrl}/api/v3/user/repos`,
     }, { 'X-OAuth-Scopes': 'repo, read:org' });
   }
 
@@ -338,7 +338,7 @@ export function handleRest(request: RestRequest): RestResult {
   if (segments.length === 2 && segments[0] === 'user' && segments[1] === 'repos') {
     if (method === 'GET') {
       const repos = forge.listRepos(forge.viewer.login);
-      const { page, link } = paginate(repos, query, `${baseUrl}/user/repos`);
+      const { page, link } = paginate(repos, query, `${baseUrl}/api/v3/user/repos`);
       return json(200, page.map((repo) => repoShape(forge, repo)), linkHeaders(link));
     }
     if (method === 'POST') {
